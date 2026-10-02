@@ -9,6 +9,49 @@ F2), add children, remove nodes and filter by name. Sorting is available by clic
 `TreeNode` is plain C++. Each node owns its children through `std::vector<std::unique_ptr<TreeNode>>` and keeps a
 raw pointer to its parent. An invisible root node (`NodeType::Root`) holds the projects.
 
+## How the model gets its data
+
+`ProjectTreeModel` does **not** build a structure of its own. It neither copies nor converts the tree. It keeps
+the `TreeNode` tree it receives and translates the view's questions ("how many children does this have?",
+"what is row 2 under this?") into lookups on that tree.
+
+### Where the tree comes from
+
+`MainWindow`'s constructor creates the tree and hands it to the model:
+
+```cpp
+m_model = new ProjectTreeModel(createSampleProjects(), this);
+```
+
+- `createSampleProjects()` (`SampleProject.cpp`) builds the plain C++ tree with `TreeNode::addChild()`.
+- The constructor only takes ownership:
+
+  ```cpp
+  ProjectTreeModel::ProjectTreeModel(std::unique_ptr<TreeNode> root, QObject *parent)
+      : QAbstractItemModel(parent), m_root(std::move(root)) {}
+  ```
+
+  At this point no `QModelIndex` exists yet.
+
+### What triggers it
+
+```cpp
+m_proxy->setSourceModel(m_model);   // the proxy starts asking the model
+m_tree->setModel(m_proxy);          // the view starts asking the proxy
+m_tree->expandToDepth(1);           // the view asks for the children of the top two levels
+```
+
+Once the view has a model, it calls `rowCount()`, `index()` and `data()` whenever it needs to lay out or paint.
+That happens on the first show, when you scroll or expand a node, and when the proxy filters.
+A collapsed branch is never asked about until you open it. The model is **pulled**, not pushed.
+
+### Walkthrough: the first show
+
+1. `rowCount(QModelIndex())`: the root has 2 children (the projects).
+2. `index(0, 0, {})`: an index carrying the *Residential Lakeside* node. `data()` returns its name.
+3. `expandToDepth(1)`: `rowCount(projectIndex)`, then `index(0, 0, projectIndex)` for *House A*, and so on.
+4. Floors and elements are only requested when you expand a building.
+
 ## Implementing QAbstractItemModel
 
 A tree model has to answer five questions:
@@ -37,6 +80,19 @@ TreeNode *ProjectTreeModel::nodeFor(const QModelIndex &index) const
 }
 ```
 
+`nodeFor()` turns an index back into its node, so every other function is a short lookup:
+
+- `rowCount(parent)` returns `nodeFor(parent)->childCount()`.
+- `data(index)` returns the name, the type or `elementCount()` of `nodeFor(index)`, depending on the column.
+- `parent(index)` goes the other way, using the node's parent pointer:
+
+  ```cpp
+  TreeNode *parentNode = nodeFor(index)->parent();
+  if (!parentNode || parentNode == m_root.get())
+      return {};                                   // top level → invalid index
+  return createIndex(parentNode->row(), 0, parentNode);
+  ```
+
 Rules to remember:
 
 - An invalid `QModelIndex` stands for the invisible root.
@@ -46,7 +102,9 @@ Rules to remember:
 
 ## Changing the structure
 
-Changes must be wrapped in begin/end calls so that views and proxies can update:
+The model only modifies the tree when it is edited (`insertRows()`, `removeRows()`, `setData()`).
+Each change must be wrapped in begin/end calls (or followed by `dataChanged()`). They tell the proxy and the
+view to ask again for the affected part:
 
 ```cpp
 beginInsertRows(parent, row, row + count - 1);

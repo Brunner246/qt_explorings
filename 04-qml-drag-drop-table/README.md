@@ -27,6 +27,48 @@ bool ItemTableModel::moveRowTo(int row, ItemTableModel *target)
 }
 ```
 
+## Where a drop into a full table is rejected
+
+The QML does not reject the item. The C++ model does, and the QML only reacts to the result.
+
+**1. The rule lives in C++.** `ItemTableModel::moveRowTo()` (above) returns `false` when `target->isFull()`,
+where `isFull()` means `count >= capacity`. Nothing is moved.
+
+**2. The drop handler forwards the decision.** `ItemTable.qml`:
+
+```qml
+onDropped: drop => {
+    const ghost = drop.source as DragGhost
+    if (ghost && ghost.sourceModel.moveRowTo(ghost.sourceRow, control.tableModel))
+        drop.accept()
+}
+```
+
+If `moveRowTo()` returns `false`, `drop.accept()` is never called. The drop is ignored and the item stays in
+the source table.
+
+**3. The rest of the QML only shows the state.** The `accepting` / `rejecting` properties of `ItemTable.qml` read
+`tableModel.isFull` only to color the border. `onEntered` rejects only drags that come from the same table:
+
+```qml
+onEntered: drag => drag.accepted = (drag.source as DragGhost)?.sourceModel !== control.tableModel
+```
+
+### Why not reject a full table already in `onEntered`?
+
+If `onEntered` rejects a drag, the `DropArea` never reports `containsDrag`, so the red "full" border could not be
+shown. Accepting the enter and refusing on drop gives the user visible feedback while hovering. The cost is
+that there is no "forbidden" cursor, unlike the Widgets version, where `canDropMimeData()` provides one.
+
+To block the drag already on enter, extend the condition. You then lose the red hover feedback:
+
+```qml
+onEntered: drag => drag.accepted = (drag.source as DragGhost)?.sourceModel !== control.tableModel
+                                   && !control.tableModel.isFull
+```
+
+Either way, `moveRowTo()` stays the final guard, so the limit holds no matter what the QML does.
+
 ## The pieces
 
 - **`DragGhost.qml`**: a single floating rectangle at the root of the scene. While dragging it follows the
@@ -51,7 +93,8 @@ bool ItemTableModel::moveRowTo(int row, ItemTableModel *target)
 
 - `pragma ComponentBehavior: Bound` in `ItemTable.qml` lets the delegate safely use ids of the surrounding
   component (`control`). Without it, `qmllint` warns about unqualified access.
-- Dropping on the table the drag came from is ignored (`DropArea.onEntered` rejects it).
+- Dropping on the table the drag came from is ignored (`DropArea.onEntered` rejects it). `moveRowTo()` also
+  returns `false` for `target == this`.
 
 ## Files
 
