@@ -1,0 +1,64 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "cl.exe",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "msvc-debug",
+      "inherits": "base",
+      "displayName": "MSVC Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "msvc-release",
+      "inherits": "base",
+      "displayName": "MSVC Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "msvc-relwithdebinfo",
+      "inherits": "base",
+      "displayName": "MSVC RelWithDebInfo (optimized + max debug info)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_FLAGS_RELWITHDEBINFO":           "/O2 /Ob1 /DNDEBUG /Zi /Zo /JMC",
+        "CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO":    "/DEBUG:FULL /INCREMENTAL",
+        "CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO": "/DEBUG:FULL /INCREMENTAL"
+      }
+    },
+    {
+      "name": "msvc-relwithdebinfo-noopt",
+      "inherits": "base",
+      "displayName": "MSVC RelWithDebInfo NoOpt (debug-friendly stepping)",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_CXX_FLAGS_RELWITHDEBINFO":           "/Od /Ob0 /Zi /JMC /RTC1",
+        "CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO":    "/DEBUG:FULL /INCREMENTAL",
+        "CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO": "/DEBUG:FULL /INCREMENTAL"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug",                "configurePreset": "msvc-debug" },
+    { "name": "release",              "configurePreset": "msvc-release" },
+    { "name": "relwithdebinfo",       "configurePreset": "msvc-relwithdebinfo" },
+    { "name": "relwithdebinfo-noopt", "configurePreset": "msvc-relwithdebinfo-noopt" }
+  ]
+}
